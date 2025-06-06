@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, HTTPException
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -6,9 +6,9 @@ import os
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field
-from typing import List
 import uuid
 from datetime import datetime
+from typing import Optional
 
 
 ROOT_DIR = Path(__file__).parent
@@ -27,30 +27,52 @@ api_router = APIRouter(prefix="/api")
 
 
 # Define Models
-class StatusCheck(BaseModel):
+class NumberData(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
+    number: float
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
-class StatusCheckCreate(BaseModel):
-    client_name: str
+class SaveNumberRequest(BaseModel):
+    number: float
+
+class NumberResponse(BaseModel):
+    number: Optional[float] = None
+    exists: bool
+
 
 # Add your routes to the router instead of directly to app
 @api_router.get("/")
 async def root():
-    return {"message": "Hello World"}
+    return {"message": "Number Storage API"}
 
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.dict()
-    status_obj = StatusCheck(**status_dict)
-    _ = await db.status_checks.insert_one(status_obj.dict())
-    return status_obj
+@api_router.post("/save-number")
+async def save_number(request: SaveNumberRequest):
+    try:
+        # Create number data object
+        number_data = NumberData(number=request.number)
+        
+        # Clear existing numbers (keep only the latest)
+        await db.numbers.delete_many({})
+        
+        # Insert new number
+        await db.numbers.insert_one(number_data.dict())
+        
+        return {"success": True, "message": "Number saved successfully", "number": request.number}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error saving number: {str(e)}")
 
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    status_checks = await db.status_checks.find().to_list(1000)
-    return [StatusCheck(**status_check) for status_check in status_checks]
+@api_router.get("/get-number", response_model=NumberResponse)
+async def get_number():
+    try:
+        # Get the latest saved number
+        latest_number = await db.numbers.find_one(sort=[("timestamp", -1)])
+        
+        if latest_number:
+            return NumberResponse(number=latest_number["number"], exists=True)
+        else:
+            return NumberResponse(number=None, exists=False)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving number: {str(e)}")
 
 # Include the router in the main app
 app.include_router(api_router)
