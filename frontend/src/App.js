@@ -1,39 +1,50 @@
 import React, { useState } from "react";
 import "./App.css";
-import { BrowserRouter, Routes, Route, Link, useNavigate } from "react-router-dom";
-import axios from "axios";
+import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+// Local storage key for storing the number
+const STORAGE_KEY = "savedNumber";
 
 // Page 1: Save Number
 const SavePage = () => {
   const [number, setNumber] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
-  const navigate = useNavigate();
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!number.trim()) {
       setMessage("Please enter a number");
+      return;
+    }
+
+    const numValue = parseFloat(number);
+    if (isNaN(numValue)) {
+      setMessage("Please enter a valid number");
       return;
     }
 
     setLoading(true);
     setMessage("");
 
-    try {
-      const response = await axios.post(`${API}/save-number`, {
-        number: parseFloat(number)
-      });
-      
-      setMessage(`Number ${number} saved successfully!`);
-      setNumber("");
-    } catch (error) {
-      console.error("Error saving number:", error);
-      setMessage("Error saving number. Please try again.");
-    } finally {
-      setLoading(false);
+    // Simulate loading delay for better UX
+    setTimeout(() => {
+      try {
+        // Save to localStorage
+        localStorage.setItem(STORAGE_KEY, numValue.toString());
+        setMessage(`Number ${numValue} saved successfully!`);
+        setNumber("");
+      } catch (error) {
+        console.error("Error saving number:", error);
+        setMessage("Error saving number. Please try again.");
+      } finally {
+        setLoading(false);
+      }
+    }, 300);
+  };
+
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter') {
+      handleSave();
     }
   };
 
@@ -46,8 +57,10 @@ const SavePage = () => {
             type="number"
             value={number}
             onChange={(e) => setNumber(e.target.value)}
+            onKeyPress={handleKeyPress}
             placeholder="Enter a number"
             className="number-input"
+            step="any"
           />
           <button 
             onClick={handleSave} 
@@ -57,7 +70,7 @@ const SavePage = () => {
             {loading ? "Saving..." : "Save"}
           </button>
         </div>
-        {message && <p className="message">{message}</p>}
+        {message && <p className={`message ${message.includes('Error') ? 'error' : ''}`}>{message}</p>}
         
         <div className="navigation">
           <Link to="/show" className="nav-link">Go to Show Page →</Link>
@@ -73,27 +86,30 @@ const ShowPage = () => {
   const [loading, setLoading] = useState(false);
   const [hasNumber, setHasNumber] = useState(false);
 
-  const handleShow = async () => {
+  const handleShow = () => {
     setLoading(true);
     
-    try {
-      const response = await axios.get(`${API}/get-number`);
-      const data = response.data;
-      
-      if (data.exists) {
-        setSavedNumber(data.number);
-        setHasNumber(true);
-      } else {
+    // Simulate loading delay for better UX
+    setTimeout(() => {
+      try {
+        // Get from localStorage
+        const storedNumber = localStorage.getItem(STORAGE_KEY);
+        
+        if (storedNumber !== null) {
+          setSavedNumber(parseFloat(storedNumber));
+          setHasNumber(true);
+        } else {
+          setSavedNumber(null);
+          setHasNumber(false);
+        }
+      } catch (error) {
+        console.error("Error fetching number:", error);
         setSavedNumber(null);
         setHasNumber(false);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error("Error fetching number:", error);
-      setSavedNumber(null);
-      setHasNumber(false);
-    } finally {
-      setLoading(false);
-    }
+    }, 300);
   };
 
   return (
@@ -109,11 +125,13 @@ const ShowPage = () => {
         </button>
         
         <div className="result">
-          {savedNumber !== null ? (
+          {loading ? (
+            <p className="loading">Loading...</p>
+          ) : savedNumber !== null ? (
             <p className="number-display">
               Last saved number: <span className="number">{savedNumber}</span>
             </p>
-          ) : hasNumber === false && savedNumber === null && !loading ? (
+          ) : hasNumber === false && savedNumber === null ? (
             <p className="no-number">none</p>
           ) : null}
         </div>
@@ -126,12 +144,18 @@ const ShowPage = () => {
   );
 };
 
+// Home component that redirects to SavePage
+const Home = () => {
+  return <SavePage />;
+};
+
 function App() {
   return (
     <div className="App">
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<SavePage />} />
+          <Route path="/" element={<Home />} />
+          <Route path="/save" element={<SavePage />} />
           <Route path="/show" element={<ShowPage />} />
         </Routes>
       </BrowserRouter>
